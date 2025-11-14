@@ -1,5 +1,5 @@
 import os
-from flask import Flask, render_template
+from flask import Flask, render_template, request
 from flask_socketio import SocketIO, emit, join_room, leave_room
 from pymongo import MongoClient
 from datetime import datetime
@@ -58,7 +58,7 @@ def handle_disconnect():
                 'username': username, 
                 'message': f'{username} 離開了聊天室',
                 'users': list(users.keys())
-            }, broadcast=True)
+            }, room='chatroom')
 
 @socketio.on('join')
 def handle_join(data):
@@ -83,7 +83,7 @@ def handle_join(data):
         print(f'✅ {username} 加入了聊天室')
         
         # 然後載入歷史訊息（非阻塞）
-        if messages_collection:
+        if messages_collection is not None:
             try:
                 # 載入最近 50 條訊息
                 recent_messages = messages_collection.find().sort('timestamp', -1).limit(50)
@@ -105,7 +105,7 @@ def handle_join(data):
             'username': username,
             'message': f'{username} 加入了聊天室',
             'users': list(users.keys())
-        }, broadcast=True, include_self=False, room='chatroom')
+        }, room='chatroom', skip_sid=request.sid)
         
     except Exception as e:
         print(f'❌ handle_join 發生錯誤: {e}')
@@ -124,7 +124,7 @@ def handle_message(data):
     timestamp = data.get('timestamp', '')
     
     # 保存到 MongoDB
-    if messages_collection:
+    if messages_collection is not None:
         try:
             messages_collection.insert_one({
                 'username': username,
@@ -136,11 +136,11 @@ def handle_message(data):
             print(f'保存訊息失敗: {e}')
     
     # 廣播訊息
-    emit('message', {
+    socketio.emit('message', {
         'username': username,
         'message': message,
         'timestamp': timestamp
-    }, broadcast=True, include_self=False, room='chatroom')
+    }, room='chatroom', skip_sid=request.sid)
     print(f'{username}: {message}')
 
 @socketio.on('typing')
@@ -148,10 +148,10 @@ def handle_typing(data):
     username = data.get('username', 'Anonymous')
     is_typing = data.get('typing', False)
     
-    emit('typing', {
+    socketio.emit('typing', {
         'username': username,
         'typing': is_typing
-    }, broadcast=True, include_self=False, room='chatroom')
+    }, room='chatroom', skip_sid=request.sid)
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
