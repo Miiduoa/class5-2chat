@@ -1,15 +1,120 @@
 import os
-from flask import Flask
+from flask import Flask, render_template
+from flask_socketio import SocketIO, emit, join_room, leave_room
+from pymongo import MongoClient
+from datetime import datetime
+import json
 
 app = Flask(__name__)
+app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'dev-secret-key-change-in-production')
+socketio = SocketIO(app, cors_allowed_origins="*", async_mode='threading')
 
-# A basic "Hello World" to confirm the app is running.
-# The full chat functionality can be added next.
+# MongoDB 連接
+MONGO_URI = os.environ.get('MONGO_URI', '')
+if MONGO_URI:
+    try:
+        client = MongoClient(MONGO_URI)
+        db = client['chatapp']
+        messages_collection = db['messages']
+        print('✅ 已連接到 MongoDB Atlas')
+    except Exception as e:
+        print(f'❌ MongoDB 連接失敗: {e}')
+        messages_collection = None
+else:
+    print('⚠️ 未設定 MONGO_URI，聊天記錄將不會保存')
+    messages_collection = None
+
+# 儲存所有連線的使用者
+users = {}
+
 @app.route('/')
 def index():
-    return "Chat App is running!"
+    return render_template('index.html')
+
+@socketio.on('connect')
+def handle_connect():
+    print('用戶已連線')
+    emit('connected', {'message': '已連線到聊天室'})
+
+@socketio.on('disconnect')
+def handle_disconnect():
+    print('用戶已斷線')
+    if hasattr(handle_disconnect, 'username'):
+        username = handle_disconnect.username
+        if username in users:
+            del users[username]
+            socketio.emit('user_left', {
+                'username': username, 
+                'message': f'{username} 離開了聊天室',
+                'users': list(users.keys())
+            }, broadcast=True)
+
+@socketio.on('join')
+def handle_join(data):
+    username = data.get('username', 'Anonymous')
+    handle_disconnect.username = username  # 儲存使用者名稱
+    users[username] = True
+    join_room('chatroom')
+    
+    # 載入歷史訊息
+    if messages_collection:
+        try:
+            # 載入最近 50 條訊息
+            recent_messages = messages_collection.find().sort('timestamp', -1).limit(50)
+            history = []
+            for msg in reversed(list(recent_messages)):
+                history.append({
+                    'username': msg.get('username', 'Unknown'),
+                    'message': msg.get('message', ''),
+                    'timestamp': msg.get('timestamp', '')
+                })
+            emit('history', {'messages': history})
+        except Exception as e:
+            print(f'載入歷史訊息失敗: {e}')
+    
+    emit('joined', {
+        'username': username,
+        'message': f'{username} 加入了聊天室',
+        'users': list(users.keys())
+    }, broadcast=True, include_self=True)
+    print(f'{username} 加入了聊天室')
+
+@socketio.on('message')
+def handle_message(data):
+    username = data.get('username', 'Anonymous')
+    message = data.get('message', '')
+    timestamp = data.get('timestamp', '')
+    
+    # 保存到 MongoDB
+    if messages_collection:
+        try:
+            messages_collection.insert_one({
+                'username': username,
+                'message': message,
+                'timestamp': timestamp,
+                'created_at': datetime.now()
+            })
+        except Exception as e:
+            print(f'保存訊息失敗: {e}')
+    
+    # 廣播訊息
+    emit('message', {
+        'username': username,
+        'message': message,
+        'timestamp': timestamp
+    }, broadcast=True, include_self=False, room='chatroom')
+    print(f'{username}: {message}')
+
+@socketio.on('typing')
+def handle_typing(data):
+    username = data.get('username', 'Anonymous')
+    is_typing = data.get('typing', False)
+    
+    emit('typing', {
+        'username': username,
+        'typing': is_typing
+    }, broadcast=True, include_self=False, room='chatroom')
 
 if __name__ == '__main__':
-    # Render provides the PORT environment variable.
     port = int(os.environ.get('PORT', 5000))
-    app.run(host='0.0.0.0', port=port)
+    socketio.run(app, host='0.0.0.0', port=port, debug=False, allow_unsafe_werkzeug=True)
