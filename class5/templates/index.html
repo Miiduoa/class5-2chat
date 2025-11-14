@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WebSocket 聊天室</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <div class="chat-header">
+            <h1>💬 WebSocket 聊天室</h1>
+            <div class="status" id="status">連線中...</div>
+        </div>
+        
+        <div class="chat-wrapper">
+            <div class="sidebar">
+                <h3>線上使用者</h3>
+                <div id="users-list" class="users-list">
+                    <div class="user-item">載入中...</div>
+                </div>
+            </div>
+            
+            <div class="chat-main">
+                <div class="messages" id="messages"></div>
+                <div class="typing-indicator" id="typing-indicator"></div>
+                
+                <div class="input-area">
+                    <input 
+                        type="text" 
+                        id="message-input" 
+                        placeholder="輸入訊息..." 
+                        autocomplete="off"
+                        disabled
+                    >
+                    <button id="send-btn" disabled>傳送</button>
+                </div>
+            </div>
+        </div>
+        
+        <div class="username-modal" id="username-modal">
+            <div class="modal-content">
+                <h2>歡迎來到聊天室！</h2>
+                <p>請輸入您的名稱：</p>
+                <input 
+                    type="text" 
+                    id="username-input" 
+                    placeholder="您的名稱" 
+                    maxlength="20"
+                    autocomplete="off"
+                >
+                <button id="join-btn">加入聊天室</button>
+            </div>
+        </div>
+    </div>
+    
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+    <script src="{{ url_for('static', filename='script.js') }}"></script>
+</body>
+</html>
+
