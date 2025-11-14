@@ -71,6 +71,21 @@ socket.on('joined', (data) => {
     joinBtn.textContent = '加入聊天室';
 });
 
+socket.on('join_error', (data) => {
+    console.error('❌ 加入聊天室時發生錯誤:', data);
+    alert('加入聊天室時發生錯誤: ' + (data.error || '未知錯誤'));
+    joinBtn.disabled = false;
+    joinBtn.textContent = '加入聊天室';
+});
+
+socket.on('user_joined', (data) => {
+    // 其他使用者加入時的通知
+    if (data.username !== username) {
+        addSystemMessage(data.message);
+        updateUsersList(data.users);
+    }
+});
+
 socket.on('user_left', (data) => {
     addSystemMessage(data.message);
     updateUsersList(data.users);

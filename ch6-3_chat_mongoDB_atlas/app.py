@@ -40,8 +40,12 @@ def index():
 
 @socketio.on('connect')
 def handle_connect():
-    print('用戶已連線')
-    emit('connected', {'message': '已連線到聊天室'})
+    print('✅ 用戶已連線')
+    try:
+        emit('connected', {'message': '已連線到聊天室'})
+        print('✅ 已發送 connected 事件')
+    except Exception as e:
+        print(f'❌ 發送 connected 事件失敗: {e}')
 
 @socketio.on('disconnect')
 def handle_disconnect():
@@ -58,40 +62,60 @@ def handle_disconnect():
 
 @socketio.on('join')
 def handle_join(data):
-    print(f'📥 收到 join 事件: {data}')
-    username = data.get('username', 'Anonymous')
-    print(f'👤 使用者名稱: {username}')
-    
-    handle_disconnect.username = username  # 儲存使用者名稱
-    users[username] = True
-    join_room('chatroom')
-    print(f'✅ 使用者 {username} 已加入房間')
-    
-    # 載入歷史訊息
-    if messages_collection:
+    try:
+        print(f'📥 收到 join 事件: {data}')
+        username = data.get('username', 'Anonymous')
+        print(f'👤 使用者名稱: {username}')
+        
+        handle_disconnect.username = username  # 儲存使用者名稱
+        users[username] = True
+        join_room('chatroom')
+        print(f'✅ 使用者 {username} 已加入房間')
+        
+        # 先發送 joined 事件，確保前端能收到回應
+        response_data = {
+            'username': username,
+            'message': f'{username} 加入了聊天室',
+            'users': list(users.keys())
+        }
+        print(f'📤 發送 joined 事件: {response_data}')
+        emit('joined', response_data)
+        print(f'✅ {username} 加入了聊天室')
+        
+        # 然後載入歷史訊息（非阻塞）
+        if messages_collection:
+            try:
+                # 載入最近 50 條訊息
+                recent_messages = messages_collection.find().sort('timestamp', -1).limit(50)
+                history = []
+                for msg in reversed(list(recent_messages)):
+                    history.append({
+                        'username': msg.get('username', 'Unknown'),
+                        'message': msg.get('message', ''),
+                        'timestamp': msg.get('timestamp', '')
+                    })
+                print(f'📜 載入 {len(history)} 條歷史訊息')
+                emit('history', {'messages': history})
+            except Exception as e:
+                print(f'❌ 載入歷史訊息失敗: {e}')
+                # 即使載入失敗也不影響加入
+        
+        # 廣播給其他使用者
+        socketio.emit('user_joined', {
+            'username': username,
+            'message': f'{username} 加入了聊天室',
+            'users': list(users.keys())
+        }, broadcast=True, include_self=False, room='chatroom')
+        
+    except Exception as e:
+        print(f'❌ handle_join 發生錯誤: {e}')
+        import traceback
+        traceback.print_exc()
+        # 即使出錯也嘗試發送錯誤訊息給客戶端
         try:
-            # 載入最近 50 條訊息
-            recent_messages = messages_collection.find().sort('timestamp', -1).limit(50)
-            history = []
-            for msg in reversed(list(recent_messages)):
-                history.append({
-                    'username': msg.get('username', 'Unknown'),
-                    'message': msg.get('message', ''),
-                    'timestamp': msg.get('timestamp', '')
-                })
-            print(f'📜 載入 {len(history)} 條歷史訊息')
-            emit('history', {'messages': history})
-        except Exception as e:
-            print(f'❌ 載入歷史訊息失敗: {e}')
-    
-    response_data = {
-        'username': username,
-        'message': f'{username} 加入了聊天室',
-        'users': list(users.keys())
-    }
-    print(f'📤 發送 joined 事件: {response_data}')
-    emit('joined', response_data, broadcast=True, include_self=True)
-    print(f'✅ {username} 加入了聊天室')
+            emit('join_error', {'error': str(e)})
+        except:
+            pass
 
 @socketio.on('message')
 def handle_message(data):
