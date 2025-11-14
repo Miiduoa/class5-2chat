@@ -1,0 +1,12 @@
+services:
+  - type: web
+    name: chatapp
+    env: python
+    buildCommand: uv sync
+    startCommand: uv run python ch6-3_chat_mongoDB_atlas/app.py
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.6
+      # 其他環境變數需要從 .env 複製後在 Render 控制台添加
+    plan: free
+
