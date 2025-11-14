@@ -7,7 +7,14 @@ import json
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'dev-secret-key-change-in-production')
-socketio = SocketIO(app, cors_allowed_origins="*", async_mode='threading')
+# 嘗試使用 eventlet，如果失敗則使用 threading
+try:
+    import eventlet
+    socketio = SocketIO(app, cors_allowed_origins="*", async_mode='eventlet')
+    print('✅ 使用 eventlet 模式')
+except ImportError:
+    socketio = SocketIO(app, cors_allowed_origins="*", async_mode='threading')
+    print('⚠️ eventlet 未安裝，使用 threading 模式')
 
 # MongoDB 連接
 MONGO_URI = os.environ.get('MONGO_URI', '')
@@ -51,10 +58,14 @@ def handle_disconnect():
 
 @socketio.on('join')
 def handle_join(data):
+    print(f'📥 收到 join 事件: {data}')
     username = data.get('username', 'Anonymous')
+    print(f'👤 使用者名稱: {username}')
+    
     handle_disconnect.username = username  # 儲存使用者名稱
     users[username] = True
     join_room('chatroom')
+    print(f'✅ 使用者 {username} 已加入房間')
     
     # 載入歷史訊息
     if messages_collection:
@@ -68,16 +79,19 @@ def handle_join(data):
                     'message': msg.get('message', ''),
                     'timestamp': msg.get('timestamp', '')
                 })
+            print(f'📜 載入 {len(history)} 條歷史訊息')
             emit('history', {'messages': history})
         except Exception as e:
-            print(f'載入歷史訊息失敗: {e}')
+            print(f'❌ 載入歷史訊息失敗: {e}')
     
-    emit('joined', {
+    response_data = {
         'username': username,
         'message': f'{username} 加入了聊天室',
         'users': list(users.keys())
-    }, broadcast=True, include_self=True)
-    print(f'{username} 加入了聊天室')
+    }
+    print(f'📤 發送 joined 事件: {response_data}')
+    emit('joined', response_data, broadcast=True, include_self=True)
+    print(f'✅ {username} 加入了聊天室')
 
 @socketio.on('message')
 def handle_message(data):

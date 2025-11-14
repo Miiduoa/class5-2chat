@@ -18,14 +18,14 @@ let typingTimeout;
 
 // Socket 事件監聽
 socket.on('connect', () => {
-    console.log('已連線到伺服器');
+    console.log('✅ 已連線到伺服器');
     statusDiv.textContent = '已連線';
     statusDiv.classList.add('connected');
     statusDiv.classList.remove('disconnected');
 });
 
 socket.on('disconnect', () => {
-    console.log('已斷線');
+    console.log('❌ 已斷線');
     statusDiv.textContent = '已斷線';
     statusDiv.classList.remove('connected');
     statusDiv.classList.add('disconnected');
@@ -34,8 +34,15 @@ socket.on('disconnect', () => {
     sendBtn.disabled = true;
 });
 
+socket.on('connect_error', (error) => {
+    console.error('❌ 連接錯誤:', error);
+    statusDiv.textContent = '連接失敗';
+    statusDiv.classList.remove('connected');
+    statusDiv.classList.add('disconnected');
+});
+
 socket.on('connected', (data) => {
-    console.log(data.message);
+    console.log('📨 收到連接確認:', data.message);
 });
 
 socket.on('history', (data) => {
@@ -48,6 +55,7 @@ socket.on('history', (data) => {
 });
 
 socket.on('joined', (data) => {
+    console.log('✅ 成功加入聊天室:', data);
     username = data.username;
     isConnected = true;
     usernameModal.classList.add('hidden');
@@ -57,6 +65,10 @@ socket.on('joined', (data) => {
     
     addSystemMessage(data.message);
     updateUsersList(data.users);
+    
+    // 恢復按鈕狀態
+    joinBtn.disabled = false;
+    joinBtn.textContent = '加入聊天室';
 });
 
 socket.on('user_left', (data) => {
@@ -81,9 +93,26 @@ socket.on('typing', (data) => {
 // 加入聊天室
 joinBtn.addEventListener('click', () => {
     const name = usernameInput.value.trim();
-    if (name) {
-        socket.emit('join', { username: name });
+    console.log('🔘 點擊加入按鈕，使用者名稱:', name);
+    console.log('🔌 Socket 連接狀態:', socket.connected);
+    
+    if (!name) {
+        alert('請輸入您的名稱！');
+        return;
     }
+    
+    if (!socket.connected) {
+        alert('尚未連接到伺服器，請稍候再試...');
+        console.error('Socket 未連接');
+        return;
+    }
+    
+    console.log('📤 發送 join 事件:', { username: name });
+    socket.emit('join', { username: name });
+    
+    // 顯示載入狀態
+    joinBtn.disabled = true;
+    joinBtn.textContent = '加入中...';
 });
 
 usernameInput.addEventListener('keypress', (e) => {
